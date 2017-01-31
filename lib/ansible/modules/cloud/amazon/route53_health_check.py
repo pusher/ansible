@@ -153,10 +153,26 @@ from ansible.module_utils.ec2 import ec2_argument_spec, get_aws_connection_info
 #  string_match if not previously enabled
 def find_health_check(conn, wanted):
     """Searches for health checks that have the exact same set of immutable values"""
-    for check in conn.get_list_health_checks().HealthChecks:
-        config = check.HealthCheckConfig
-        if config.get('IPAddress') == wanted.ip_addr and config.get('FullyQualifiedDomainName') == wanted.fqdn and config.get('Type') == wanted.hc_type and config.get('RequestInterval') == str(wanted.request_interval):
-            return check
+    marker = None
+
+    while True:
+        result = conn.get_list_health_checks(100, marker)
+
+        for check in result.HealthChecks:
+            config = check.HealthCheckConfig
+
+            if ((wanted.ip_addr or wanted.fqdn) and
+                (wanted.ip_addr is None or config.get('IPAddress') == wanted.ip_addr) and
+                (wanted.fqdn is None or config.get('FullyQualifiedDomainName') == wanted.fqdn) and
+                config.get('Type') == wanted.hc_type and
+                config.get('RequestInterval') == str(wanted.request_interval)):
+                return check
+
+        if result.IsTruncated == 'true':
+            marker = result.NextMarker
+        else:
+            break
+
     return None
 
 def to_health_check(config):
